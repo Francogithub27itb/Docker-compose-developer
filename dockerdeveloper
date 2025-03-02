@@ -1,0 +1,54 @@
+# 1️⃣ Usamos Ubuntu 24.04 como base
+FROM ubuntu:24.04
+
+# 2️⃣ Instalamos paquetes básicos
+RUN apt update && apt install -y \
+    sudo \
+    xfce4 xfce4-terminal \
+    tightvncserver \
+    software-properties-common \
+    curl wget nano net-tools dbus-x11 xauth x11-xserver-utils \
+    supervisor \
+    openssh-server \
+    python3 python3-pip \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3️⃣ Crear usuario 'developer' con permisos
+RUN useradd -m -s /bin/bash developer && \
+    echo "developer:developer" | chpasswd && \
+    usermod -aG sudo developer
+
+# 4️⃣ Configurar SSH
+RUN mkdir /run/sshd && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# 5️⃣ Instalar Visual Studio Code
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
+    install -o root -g root -m 644 microsoft.gpg /usr/share/keyrings/ && \
+    sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list' && \
+    apt update && apt install -y code && \
+    rm -rf /var/lib/apt/lists/* microsoft.gpg
+
+# 6️⃣ Configurar VNC para 'developer'
+USER developer
+RUN mkdir -p /home/developer/.vnc && \
+    echo "developer" | vncpasswd -f > /home/developer/.vnc/passwd && \
+    chmod 600 /home/developer/.vnc/passwd && \
+    echo "#!/bin/bash\nxrdb $HOME/.Xresources\nstartxfce4 &" > /home/developer/.vnc/xstartup && \
+    chmod +x /home/developer/.vnc/xstartup
+
+# Configuramos alias de VS Code para evitar el sandbox
+RUN echo 'alias code="code --no-sandbox"' >> /home/developer/.bashrc
+
+# 7️⃣ Volvemos a root para configurar el inicio
+USER root
+
+# 8️⃣ Exponemos los puertos necesarios
+EXPOSE 33333 5901
+
+# 9️⃣ Comando de inicio
+CMD service ssh start && \
+    sudo -u developer vncserver :1 -geometry 1920x1080 -depth 16 && \
+    tail -F /dev/null
